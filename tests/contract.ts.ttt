@@ -1,0 +1,93 @@
+import assert = require("assert");
+import * as anchor from '@coral-xyz/anchor';
+import { Contract } from '../target/types/contract';
+
+const { SystemProgram } = anchor.web3;
+
+describe("state_root", () => {
+  const provider = anchor.AnchorProvider.local();
+
+  // Configure the client to use the local cluster.
+  anchor.setProvider(provider);
+
+
+  const admin = provider.wallet as anchor.Wallet
+  // Counter for the tests.
+  const counter = anchor.web3.Keypair.generate();
+  // Program for the tests.
+  const program = anchor.workspace.state_root;
+  provider.connection.requestAirdrop(counter.publicKey, 5);
+
+
+
+  console.log("counter", counter.publicKey);
+  console.log("provider", provider.wallet.publicKey);
+
+
+
+  it("transfers SOL to counter address", async () => {
+    const transferAmount = anchor.web3.LAMPORTS_PER_SOL;
+
+    const recentBlockhash = await provider.connection.getRecentBlockhash();
+    const transaction = new anchor.web3.Transaction({
+      recentBlockhash: recentBlockhash.blockhash,
+      feePayer: provider.wallet.publicKey,
+    });
+    transaction.add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: provider.wallet.publicKey,
+        toPubkey: counter.publicKey,
+        lamports: transferAmount,
+      })
+    );
+
+    await provider.sendAndConfirm(transaction);
+
+    const counterBalance = await provider.connection.getBalance(counter.publicKey);
+    assert.ok(counterBalance == transferAmount);
+  });
+
+
+  it("should initialize the contract", async () => {
+    const ba = await provider.connection.getBalance(provider.publicKey)
+    console.log("balance -1", ba)
+    await program.methods
+      .initialize()
+      .accounts({
+        contract_data: counter.publicKey,
+        user: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([counter])
+      .rpc();
+
+    let counterAccount = await program.account.contractData.fetch(counter.publicKey);
+    assert.ok(counterAccount.deployer.equals(provider.wallet.publicKey));
+  });
+
+  // it("Creates a counter", async () => {
+  //   const info = {
+  //     slot_height: 1,
+  //     root1: "0x016db4902dd2f0dd938a35fb578d24e88a74b704a412350720f244f3d6b8b918",
+  //     root2: "0x016db4902dd2f0dd938a35fb578d24e88a74b704a412350720f244f3d6b8b918"
+  //   }
+  //   console.log(program);
+
+  //   await program.methods
+  //     .storeMerkleRoots(info.slot_height, info.root1, info.root2)
+  //     .accounts({
+  //       contract_data: counter.publicKey,
+  //       deployer: provider.wallet.publicKey,
+  //       systemProgram: SystemProgram.programId,
+  //     })
+  //     .signers([counter])
+  //     .rpc();
+
+
+  //   let counterAccount = await program.account.ContractData.fetch(counter.publicKey);
+
+  //   assert.ok(counterAccount.deployer.equals(provider.wallet.publicKey));
+  //   console.log(counterAccount.merkle_data);
+  //   assert.ok(counterAccount.merkle_data.toNumber() === 0);
+  // });
+});

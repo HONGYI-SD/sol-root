@@ -1,0 +1,55 @@
+use anchor_lang::prelude::*;
+use std::collections::BTreeMap;
+
+declare_id!("C9Q5g9D5L8iRiKYUP7LyyWabUqQw5bEeKWDrzGt6W5UP");
+
+#[program]
+pub mod state_root {
+    use super::*;
+
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        let contract_data = &mut ctx.accounts.contract_data;
+        contract_data.deployer = *ctx.accounts.user.key;
+        contract_data.merkle_data = BTreeMap::new();
+        Ok(())
+    }
+
+    pub fn store_merkle_roots(
+        ctx: Context<StoreMerkleRoots>,
+        slot_height: u64,
+        root1: [u8; 32],
+        root2: [u8; 32],
+    ) -> Result<()> {
+        // require!(
+        //     ctx.accounts.contract_data.deployer == *ctx.accounts.deployer.key,
+        //     "Only the deployer can call this function"
+        // );
+        let mut merkle_data = ctx.accounts.contract_data.merkle_data.clone();
+        merkle_data.insert(slot_height, (root1, root2));
+        ctx.accounts.contract_data.merkle_data = merkle_data;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(init, payer = user, space = 8 + 32 + 1024)]
+    pub contract_data: Account<'info, ContractData>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct StoreMerkleRoots<'info> {
+    #[account(mut)]
+    pub contract_data: Account<'info, ContractData>,
+    #[account(mut)]
+    pub deployer: Signer<'info>,
+}
+
+#[account]
+pub struct ContractData {
+    pub deployer: Pubkey,
+    pub merkle_data: BTreeMap<u64, ([u8; 32], [u8; 32])>,
+}
