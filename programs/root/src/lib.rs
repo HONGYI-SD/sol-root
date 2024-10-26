@@ -30,6 +30,7 @@ mod root {
         slots_acc.slots.push(slot);
 
         let slot_roots_acc = &mut ctx.accounts.slot_roots_acc;
+        slot_roots_acc.slot = slot;
         slot_roots_acc.merkle_tree_root = mt_root;
         slot_roots_acc.world_state_root = ws_root;
 
