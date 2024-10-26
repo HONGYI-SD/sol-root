@@ -7,37 +7,32 @@ mod root {
     use super::*;
 
     pub fn initialize(ctx: Context<Create>) -> Result<()> {
-        let counter = &mut ctx.accounts.counter;
+        let slots_acc = &mut ctx.accounts.slots_acc;
 
-        if counter.initialized {
+        if slots_acc.initialized {
             return Err(MyError::AlreadyInitialized.into());
         }
 
-        counter.authority = ctx.accounts.user.key.clone();
-        counter.initialized = true;
-        counter.merkle_data = Vec::new();
+        slots_acc.authority = ctx.accounts.user.key.clone();
+        slots_acc.initialized = true;
+        slots_acc.slots = Vec::new();
         Ok(())
     }
 
-    pub fn insert(
-        ctx: Context<Increment>,
-        slot_height: u64,
-        root1: [u8; 32],
-        root2: [u8; 32],
+    pub fn addroots<'info>(
+        ctx: Context<'_, '_, '_, 'info, AddRoots<'info>>,
+        slot: u64,
+        mt_root: [u8; 32],
+        ws_root: [u8; 32],
     ) -> Result<()> {
-        let counter = &mut ctx.accounts.counter;
-        require!(
-            counter.authority == *ctx.accounts.authority.key,
-            MyError::IncrementError
-        );
+        // todo: add authority, only special account can call this ix
+        let slots_acc = &mut ctx.accounts.slots_acc;
+        slots_acc.slots.push(slot);
 
-        let entry = MerkleEntry {
-            slot_height,
-            root1,
-            root2,
-        };
+        let slot_roots_acc = &mut ctx.accounts.slot_roots_acc;
+        slot_roots_acc.merkle_tree_root = mt_root;
+        slot_roots_acc.world_state_root = ws_root;
 
-        counter.merkle_data.push(entry); // 使用 Vec
         Ok(())
     }
 }
@@ -45,16 +40,27 @@ mod root {
 #[derive(Accounts)]
 pub struct Create<'info> {
     #[account(init, payer = user, space = 10240)]
-    pub counter: Account<'info, Counter>,
+    pub slots_acc: Account<'info, SlotsAccount>,
     #[account(mut)]
     pub user: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
-pub struct Increment<'info> {
-    #[account(mut, has_one = authority)]
-    pub counter: Account<'info, Counter>,
+#[instruction(slot: u64)]
+pub struct AddRoots<'info> {
+    #[account(mut)]
+    pub slots_acc: Account<'info, SlotsAccount>,
+    pub system_program: Program<'info, System>,
+    #[account(
+        init_if_needed, 
+        payer = authority,
+        space = 8 + SlotRootsAccout::INIT_SPACE,
+        seeds = [b"roots", slot.to_le_bytes().as_ref()],
+        bump)
+    ]
+    pub slot_roots_acc: Account<'info, SlotRootsAccout>,
+    #[account(mut)]
     pub authority: Signer<'info>,
 }
 
@@ -69,15 +75,16 @@ pub enum MyError {
 }
 
 #[account]
-pub struct Counter {
+pub struct SlotsAccount {
     pub authority: Pubkey,
     pub initialized: bool,
-    pub merkle_data: Vec<MerkleEntry>, // 使用 Vec
+    pub slots: Vec<u64>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct MerkleEntry {
-    pub slot_height: u64,
-    pub root1: [u8; 32],
-    pub root2: [u8; 32],
+#[account]
+#[derive(InitSpace)]
+pub struct SlotRootsAccout{
+    pub slot: u64,
+    pub merkle_tree_root: [u8; 32],
+    pub world_state_root: [u8; 32],
 }
